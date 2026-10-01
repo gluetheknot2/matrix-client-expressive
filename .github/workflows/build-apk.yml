@@ -5,11 +5,6 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Release version'
-        required: true
-        default: 'v1.0.0'
 
 jobs:
   build:
@@ -17,86 +12,54 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
 
       - name: Setup Java
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
-          distribution: 'adopt'
+          distribution: 'temurin'
           java-version: '11'
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v2
+        uses: android-actions/setup-android@v3
         with:
           api-levels: '34'
           ndk-version: '25.1.8937393'
+          cmake-version: '3.22.1'
 
-      - name: Install dependencies
+      - name: Install npm dependencies
         run: npm install
 
-      - name: Build APK
+      - name: Make gradlew executable
         working-directory: ./android
-        run: |
-          chmod +x gradlew
-          ./gradlew assembleRelease
+        run: chmod +x gradlew
+
+      - name: Build release APK
+        working-directory: ./android
+        run: ./gradlew assembleRelease
         env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
 
-      - name: Sign APK
-        run: |
-          jarsigner -verbose \
-            -sigalg SHA256withRSA \
-            -digestalg SHA-256 \
-            -keystore android/app/keystore.jks \
-            -storepass "$KEYSTORE_PASSWORD" \
-            -keypass "$KEY_PASSWORD" \
-            android/app/build/outputs/apk/release/app-release-unsigned.apk \
-            "$KEY_ALIAS"
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+      - name: List APK files
+        working-directory: ./android
+        run: find . -name '*.apk' -type f
 
-      - name: Align APK
-        run: |
-          $ANDROID_HOME/build-tools/34.0.0/zipalign -v 4 \
-            android/app/build/outputs/apk/release/app-release-unsigned.apk \
-            matrix-client-v1.0.0.apk
-
-      - name: Create Release
+      - name: Upload APK to Release
         uses: softprops/action-gh-release@v1
         with:
-          files: matrix-client-v1.0.0.apk
-          body: |
-            # Matrix Client Expressive v1.0.0
-
-            ## Features
-            - Material 3 Expressive Design
-            - Encrypted credential storage
-            - Backup/Restore support
-            - End-to-end encryption
-            - Dark mode support
-            - Real-time messaging
-
-            ## Installation
-            ```bash
-            adb install -r matrix-client-v1.0.0.apk
-            ```
-
-            ## What's New
-            - Initial release
-            - Full React Native Android implementation
-            - Secure credential management
-            - Material 3 design system
-          draft: false
-          prerelease: false
+          files: android/app/build/outputs/apk/release/app-release.apk
+          tag_name: ${{ github.ref_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Summary
+        run: |
+          echo "Build completed for tag: ${{ github.ref_name }}"
+          echo "APK: app-release.apk"
+          echo "Download: https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}"

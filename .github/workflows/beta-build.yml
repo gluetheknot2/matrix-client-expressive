@@ -1,49 +1,68 @@
-name: Beta Build
+name: Beta Build & Test
 
 on:
   push:
     branches:
       - develop
+      - main
   pull_request:
     branches:
       - main
+      - develop
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v3
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
 
-      - uses: actions/setup-java@v3
+      - name: Setup Java
+        uses: actions/setup-java@v4
         with:
-          distribution: 'adopt'
+          distribution: 'temurin'
           java-version: '11'
 
-      - uses: android-actions/setup-android@v2
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
         with:
           api-levels: '34'
           ndk-version: '25.1.8937393'
 
-      - name: Install dependencies
+      - name: Install npm dependencies
         run: npm install
 
-      - name: Lint
+      - name: Lint code
         run: npm run lint || true
 
-      - name: Build Debug APK
+      - name: Make gradlew executable
         working-directory: ./android
-        run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug
+        run: chmod +x gradlew
 
-      - name: Upload Debug APK
-        uses: actions/upload-artifact@v3
+      - name: Build debug APK
+        working-directory: ./android
+        run: ./gradlew assembleDebug
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+
+      - name: Upload debug APK as artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: matrix-client-debug.apk
+          name: matrix-client-debug-${{ github.run_number }}
           path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
+
+      - name: Build status check
+        if: success()
+        run: echo "✅ Debug build successful!"
+
+      - name: Build failed
+        if: failure()
+        run: echo "❌ Build failed - check logs above"
